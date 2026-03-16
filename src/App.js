@@ -6,7 +6,7 @@ import {
   MessageSquare, BellRing, Navigation, Send, ShieldAlert, 
   Users, Activity, PlusCircle, Search, Lock, Unlock, 
   Gamepad2, Target, Clock, ArrowLeft, Trash2, Wifi,
-  Lightbulb, Check
+  Lightbulb, Check, User
 } from 'lucide-react';
 
 // --- CONFIGURATION FIREBASE ---
