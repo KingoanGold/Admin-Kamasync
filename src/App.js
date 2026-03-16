@@ -1,11 +1,11 @@
 /* eslint-disable */
 import React, { useState, useEffect } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, addDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import { 
   MessageSquare, BellRing, Navigation, Send, ShieldAlert, 
   Users, Activity, PlusCircle, Search, Lock, Unlock, 
-  Gamepad2, Target, Clock, ArrowLeft
+  Gamepad2, Target, Clock, ArrowLeft, Trash2, Wifi
 } from 'lucide-react';
 
 // --- CONFIGURATION FIREBASE ---
@@ -49,12 +49,15 @@ export default function AdminApp() {
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'artifacts', appId, 'users'), (snap) => {
       const fetchedUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Tri par défaut : les plus récemment actifs en premier
+      fetchedUsers.sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0));
       setUsers(fetchedUsers);
       
-      // Met à jour l'utilisateur sélectionné s'il y a un changement (ex: fin du verrouillage)
       if (selectedUser) {
         const updated = fetchedUsers.find(u => u.id === selectedUser.id);
         if (updated) setSelectedUser(updated);
+        else setSelectedUser(null); // Si l'utilisateur a été supprimé
       }
     });
     return () => unsub();
@@ -65,13 +68,29 @@ export default function AdminApp() {
     (u.pairCode || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // --- UTILS : STATUT EN LIGNE ---
+  // On considère un utilisateur "En ligne" s'il a été actif dans les 5 dernières minutes
+  const isUserOnline = (lastActive) => {
+    if (!lastActive) return false;
+    return (Date.now() - lastActive) < 5 * 60 * 1000;
+  };
+
+  const formatLastSeen = (timestamp) => {
+    if (!timestamp) return "Jamais connecté";
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  };
+
   // --- 2. FONCTION CENTRALE D'ENVOI ---
   const sendCommand = async (commandData, targetUid = null) => {
     try {
       const commandRef = doc(db, 'artifacts', appId, 'admin', 'commands');
       await setDoc(commandRef, {
         ...commandData,
-        targetUid: targetUid, // null = tout le monde, UID = ciblé
+        targetUid: targetUid,
         timestamp: Date.now()
       });
       showStatus("Commande envoyée avec succès ! ✅");
@@ -104,7 +123,7 @@ export default function AdminApp() {
     sendCommand({ type: 'FORCE_NAV', tab: tabId });
   };
 
-  // --- 4. ACTIONS CIBLÉES (VERROUILLAGE & JEUX) ---
+  // --- 4. ACTIONS CIBLÉES ---
   const handleLockApp = async (uid, isUnlock = false) => {
     const userRef = doc(db, 'artifacts', appId, 'users', uid);
     if (isUnlock) {
@@ -116,6 +135,19 @@ export default function AdminApp() {
         lockReason: lockReason 
       });
       showStatus(`App verrouillée pour ${lockTime} minutes 🔒`);
+    }
+  };
+
+  const handleDeleteUser = async (uid) => {
+    if(window.confirm("⚠️ Êtes-vous sûr de vouloir supprimer ce profil définitivement ? Toute sa progression sera perdue.")) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', appId, 'users', uid));
+        setSelectedUser(null);
+        showStatus("Profil supprimé avec succès 🗑️");
+      } catch (error) {
+        console.error(error);
+        showStatus("Erreur lors de la suppression ❌");
+      }
     }
   };
 
@@ -183,7 +215,6 @@ export default function AdminApp() {
             <h2 className="text-3xl font-black mb-8 text-white">Contrôle Global</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               
-              {/* PANEL 1: POPUP DIRECT */}
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
                 <div className="flex items-center gap-2 mb-6 text-rose-500">
                   <MessageSquare size={24} />
@@ -200,7 +231,6 @@ export default function AdminApp() {
                 </button>
               </div>
 
-              {/* PANEL 2: FORCE NAVIGATION */}
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
                 <div className="flex items-center gap-2 mb-6 text-indigo-500">
                   <Navigation size={24} />
@@ -214,7 +244,6 @@ export default function AdminApp() {
                 </div>
               </div>
 
-              {/* PANEL 3: NOTIFICATION SYSTÈME */}
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
                 <div className="flex items-center gap-2 mb-6 text-amber-500">
                   <BellRing size={24} />
@@ -260,16 +289,31 @@ export default function AdminApp() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredUsers.map(u => {
                 const isLocked = u.lockUntil && u.lockUntil > Date.now();
+                const online = isUserOnline(u.lastActive);
+                
                 return (
                   <div key={u.id} onClick={() => setSelectedUser(u)} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 cursor-pointer hover:border-indigo-500/50 transition relative group shadow-lg">
-                    <div className="flex items-center gap-4">
+                    {/* PASTILLE EN LIGNE */}
+                    <div className="absolute top-4 right-4">
+                      {online ? (
+                        <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase px-2 py-1 rounded-full border border-emerald-500/20">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> En ligne
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 text-[10px] font-bold px-2 py-1 rounded-full bg-slate-950 border border-slate-800">
+                          Hors ligne
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-4 mt-2">
                       <img src={u.avatarUrl} alt="avatar" className="w-14 h-14 rounded-full bg-slate-800 border-2 border-slate-700" />
                       <div>
                         <div className="font-bold text-white flex items-center gap-2 text-lg">
                           {u.pseudo} 
                           {isLocked && <Lock size={14} className="text-rose-500"/>}
                         </div>
-                        <div className="text-xs text-slate-500 mt-1">Code Duo: <span className="text-emerald-400 font-mono font-bold bg-emerald-500/10 px-2 py-0.5 rounded">{u.pairCode}</span></div>
+                        <div className="text-xs text-slate-500 mt-1">Code Duo: <span className="text-indigo-400 font-mono font-bold bg-indigo-500/10 px-2 py-0.5 rounded">{u.pairCode}</span></div>
                       </div>
                     </div>
                   </div>
@@ -291,10 +335,31 @@ export default function AdminApp() {
             {/* Header Profil */}
             <div className="bg-slate-900 rounded-3xl p-8 border border-slate-800 mb-8 flex items-center gap-6 shadow-xl relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
+              
+              {/* BOUTON SUPPRIMER */}
+              <button 
+                onClick={() => handleDeleteUser(selectedUser.id)} 
+                className="absolute top-6 right-6 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white p-3 rounded-xl transition-all border border-rose-500/20"
+                title="Supprimer ce joueur"
+              >
+                <Trash2 size={20} />
+              </button>
+
               <img src={selectedUser.avatarUrl} alt="avatar" className="w-24 h-24 rounded-full border-4 border-slate-800 z-10" />
-              <div className="z-10">
+              
+              <div className="z-10 flex-1">
                 <h2 className="text-3xl font-black text-white">{selectedUser.pseudo}</h2>
                 <p className="text-slate-400 text-sm mb-3">{selectedUser.bio}</p>
+                
+                {/* INFO DE CONNEXION */}
+                <div className="mb-4">
+                  {isUserOnline(selectedUser.lastActive) ? (
+                    <span className="text-emerald-400 text-xs font-bold flex items-center gap-1.5"><Wifi size={14} className="animate-pulse" /> Connecté en ce moment</span>
+                  ) : (
+                    <span className="text-slate-500 text-xs font-bold flex items-center gap-1.5"><Clock size={14} /> Dernier passage : {formatLastSeen(selectedUser.lastActive)}</span>
+                  )}
+                </div>
+
                 <div className="flex gap-2 text-xs font-bold">
                   <span className="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-full text-indigo-400">Favoris : {selectedUser.likes?.length || 0}</span>
                   <span className="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-full text-emerald-400">Statut : {selectedUser.partnerUid ? 'En Duo' : 'Solo'}</span>
