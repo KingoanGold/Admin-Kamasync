@@ -65,14 +65,16 @@ export default function AdminApp() {
       fetchedUsers.sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0));
       setUsers(fetchedUsers);
       
-      if (selectedUser) {
-        const updated = fetchedUsers.find(u => u.id === selectedUser.id);
-        if (updated) setSelectedUser(updated);
-        else setSelectedUser(null);
-      }
+      // CORRECTION DE LA BOUCLE INFINIE ICI :
+      // On utilise le state précédent ('prev') sans re-déclencher le useEffect
+      setSelectedUser(prev => {
+        if (!prev) return null;
+        const updated = fetchedUsers.find(u => u.id === prev.id);
+        return updated || null;
+      });
     });
     return () => unsub();
-  }, [selectedUser]);
+  }, []); // <-- Le tableau vide résout le bug (plus de boucle infinie !)
 
   // --- 2. ÉCOUTE DES IDÉES SOUMISES ---
   useEffect(() => {
