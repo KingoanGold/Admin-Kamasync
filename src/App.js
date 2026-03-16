@@ -230,27 +230,27 @@ export default function AdminApp() {
   return (
     <div className="h-screen w-full bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans overflow-hidden">
       
-      {/* SIDEBAR NAVIGATION */}
-      <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 p-6 flex flex-col shrink-0 overflow-y-auto">
-        <div className="flex items-center gap-3 text-emerald-500 mb-8 md:mb-10">
-          <ShieldAlert size={32} />
-          <h1 className="text-2xl font-black tracking-tighter">KAMA<span className="text-white">ADMIN</span></h1>
+      {/* SIDEBAR NAVIGATION - RENDU COMPACT & SCROLLABLE SUR MOBILE */}
+      <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 p-4 md:p-6 flex flex-col shrink-0 z-20">
+        <div className="flex items-center gap-3 text-emerald-500 mb-4 md:mb-10 shrink-0">
+          <ShieldAlert className="w-6 h-6 md:w-8 md:h-8" />
+          <h1 className="text-xl md:text-2xl font-black tracking-tighter">KAMA<span className="text-white">ADMIN</span></h1>
         </div>
         
-        <div className="space-y-3 flex-1">
-          <button onClick={() => {setActiveTab('global'); setSelectedUser(null);}} className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${activeTab === 'global' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+        <div className="flex flex-row md:flex-col gap-2 md:gap-3 overflow-x-auto no-scrollbar pb-2 md:pb-0 items-center md:items-stretch flex-1">
+          <button onClick={() => {setActiveTab('global'); setSelectedUser(null);}} className={`px-4 py-3 rounded-xl font-bold flex items-center justify-center md:justify-start gap-2 md:gap-3 transition whitespace-nowrap shrink-0 ${activeTab === 'global' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
             <Activity size={18}/> Actions Globales
           </button>
-          <button onClick={() => setActiveTab('users')} className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${activeTab === 'users' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+          <button onClick={() => setActiveTab('users')} className={`px-4 py-3 rounded-xl font-bold flex items-center justify-center md:justify-start gap-2 md:gap-3 transition whitespace-nowrap shrink-0 ${activeTab === 'users' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
             <Users size={18}/> Profils Joueurs
           </button>
-          <button onClick={() => {setActiveTab('positions'); setSelectedUser(null);}} className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${activeTab === 'positions' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+          <button onClick={() => {setActiveTab('positions'); setSelectedUser(null);}} className={`px-4 py-3 rounded-xl font-bold flex items-center justify-center md:justify-start gap-2 md:gap-3 transition whitespace-nowrap shrink-0 ${activeTab === 'positions' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
             <PlusCircle size={18}/> Injecter Position
           </button>
           
           {/* BOUTON BOÎTE À IDÉES */}
-          <button onClick={() => {setActiveTab('ideas'); setSelectedUser(null);}} className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center justify-between transition ${activeTab === 'ideas' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
-            <div className="flex items-center gap-3">
+          <button onClick={() => {setActiveTab('ideas'); setSelectedUser(null);}} className={`px-4 py-3 rounded-xl font-bold flex items-center justify-between gap-3 transition whitespace-nowrap shrink-0 ${activeTab === 'ideas' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+            <div className="flex items-center gap-2 md:gap-3">
               <Lightbulb size={18}/> Boîte à Idées
             </div>
             {ideas.filter(i => i.status === 'pending').length > 0 && (
@@ -642,6 +642,12 @@ export default function AdminApp() {
         )}
 
       </main>
+
+      {/* Règle CSS rapide pour masquer la scrollbar horizontale tout en gardant le scroll tactile sur mobile */}
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
   );
 }
