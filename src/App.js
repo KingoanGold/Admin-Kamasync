@@ -6,7 +6,7 @@ import {
   MessageSquare, BellRing, Navigation, Send, ShieldAlert, 
   Users, Activity, PlusCircle, Search, Lock, Unlock, 
   Gamepad2, Target, Clock, ArrowLeft, Trash2, Wifi,
-  Lightbulb, Check, User
+  Lightbulb, Check, User, Vibrate
 } from 'lucide-react';
 
 // --- CONFIGURATION FIREBASE ---
@@ -53,20 +53,15 @@ export default function AdminApp() {
   const [posForm, setPosForm] = useState({ name: '', cat: 'Face à face', customCat: '', desc: '', spice: 3, diff: 3 });
   const [posTarget, setPosTarget] = useState('ALL');
 
-  // NOUVEAU : State pour les idées
+  // State pour les idées
   const [ideas, setIdeas] = useState([]);
 
-  // --- 1. ÉCOUTE DES UTILISATEURS EN TEMPS RÉEL ---
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'artifacts', appId, 'users'), (snap) => {
       const fetchedUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      
-      // Tri par défaut : les plus récemment actifs en premier
       fetchedUsers.sort((a, b) => (b.lastActive || 0) - (a.lastActive || 0));
       setUsers(fetchedUsers);
       
-      // CORRECTION DE LA BOUCLE INFINIE ICI :
-      // On utilise le state précédent ('prev') sans re-déclencher le useEffect
       setSelectedUser(prev => {
         if (!prev) return null;
         const updated = fetchedUsers.find(u => u.id === prev.id);
@@ -74,13 +69,11 @@ export default function AdminApp() {
       });
     });
     return () => unsub();
-  }, []); // <-- Le tableau vide résout le bug (plus de boucle infinie !)
+  }, []);
 
-  // --- 2. ÉCOUTE DES IDÉES SOUMISES ---
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'artifacts', appId, 'ideas'), (snap) => {
       const fetchedIdeas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Trier de la plus récente à la plus ancienne
       fetchedIdeas.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       setIdeas(fetchedIdeas);
     });
@@ -92,7 +85,6 @@ export default function AdminApp() {
     (u.pairCode || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // --- UTILS ---
   const isUserOnline = (lastActive) => {
     if (!lastActive) return false;
     return (Date.now() - lastActive) < 5 * 60 * 1000;
@@ -107,7 +99,7 @@ export default function AdminApp() {
     });
   };
 
-  // --- FONCTION CENTRALE D'ENVOI ---
+  // --- ENVOI DE COMMANDES (Modifié pour le Vibreur) ---
   const sendCommand = async (commandData, targetUid = null) => {
     try {
       const commandRef = doc(db, 'artifacts', appId, 'admin', 'commands');
@@ -128,7 +120,7 @@ export default function AdminApp() {
     setTimeout(() => setStatus(''), 3000);
   };
 
-  // --- ACTIONS GLOBALES ---
+  // ACTIONS GLOBALES
   const handleSendMessage = () => {
     if (!message.trim()) return;
     sendCommand({ type: 'POPUP_MESSAGE', text: message });
@@ -146,7 +138,11 @@ export default function AdminApp() {
     sendCommand({ type: 'FORCE_NAV', tab: tabId });
   };
 
-  // --- ACTIONS CIBLÉES ---
+  const handleForceVibrateGlobal = () => {
+    sendCommand({ type: 'VIBRATE' });
+  };
+
+  // ACTIONS CIBLÉES
   const handleLockApp = async (uid, isUnlock = false) => {
     const userRef = doc(db, 'artifacts', appId, 'users', uid);
     if (isUnlock) {
@@ -162,77 +158,49 @@ export default function AdminApp() {
   };
 
   const handleDeleteUser = async (uid) => {
-    if(window.confirm("⚠️ Êtes-vous sûr de vouloir supprimer ce profil définitivement ? Toute sa progression sera perdue.")) {
+    if(window.confirm("⚠️ Êtes-vous sûr de vouloir supprimer ce profil définitivement ?")) {
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'users', uid));
         setSelectedUser(null);
         showStatus("Profil supprimé avec succès 🗑️");
       } catch (error) {
-        console.error(error);
         showStatus("Erreur lors de la suppression ❌");
       }
     }
   };
 
-  // --- INJECTION DE POSITIONS ---
   const handleAddPosition = async (e) => {
     e.preventDefault();
     if (!posForm.name || !posForm.desc) return showStatus("Remplissez le nom et la description ⚠️");
-
     const finalCat = posForm.cat === 'Autre' ? (posForm.customCat || 'Personnalisé') : posForm.cat;
-
-    const newPos = { 
-      name: posForm.name, 
-      cat: finalCat, 
-      desc: posForm.desc, 
-      spice: posForm.spice, 
-      diff: posForm.diff, 
-      shared: true, 
-      isCustom: true, 
-      createdAt: Date.now() 
-    };
+    const newPos = { name: posForm.name, cat: finalCat, desc: posForm.desc, spice: posForm.spice, diff: posForm.diff, shared: true, isCustom: true, createdAt: Date.now() };
 
     try {
       if (posTarget === 'ALL') {
-        for (const u of users) {
-          await addDoc(collection(db, 'artifacts', appId, 'users', u.id, 'customPositions'), newPos);
-        }
+        for (const u of users) await addDoc(collection(db, 'artifacts', appId, 'users', u.id, 'customPositions'), newPos);
         showStatus("Position envoyée à tout le monde ! 🌟");
       } else {
         await addDoc(collection(db, 'artifacts', appId, 'users', posTarget, 'customPositions'), newPos);
         showStatus("Position injectée dans le profil cible ! 🎯");
       }
       setPosForm({ name: '', cat: 'Face à face', customCat: '', desc: '', spice: 3, diff: 3 });
-    } catch (e) {
-      showStatus("Erreur lors de l'ajout ❌");
-    }
+    } catch (e) { showStatus("Erreur lors de l'ajout ❌"); }
   };
 
-  // --- GESTION DES IDÉES ---
   const handleApproveIdea = async (id) => {
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'ideas', id), { status: 'approved' });
-      showStatus("Idée approuvée ! ✅");
-    } catch (e) {
-      showStatus("Erreur", "❌");
-    }
+    try { await updateDoc(doc(db, 'artifacts', appId, 'ideas', id), { status: 'approved' }); showStatus("Idée approuvée ! ✅"); } catch (e) { showStatus("Erreur", "❌"); }
   };
 
   const handleDeleteIdea = async (id) => {
     if (window.confirm("Supprimer cette idée ?")) {
-      try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'ideas', id));
-        showStatus("Idée supprimée 🗑️");
-      } catch (e) {
-        showStatus("Erreur", "❌");
-      }
+      try { await deleteDoc(doc(db, 'artifacts', appId, 'ideas', id)); showStatus("Idée supprimée 🗑️"); } catch (e) { showStatus("Erreur", "❌"); }
     }
   };
 
   return (
     <div className="h-screen w-full bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans overflow-hidden">
       
-      {/* SIDEBAR NAVIGATION - RENDU COMPACT & SCROLLABLE SUR MOBILE */}
+      {/* SIDEBAR */}
       <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 p-4 md:p-6 flex flex-col shrink-0 z-20">
         <div className="flex items-center gap-3 text-emerald-500 mb-4 md:mb-10 shrink-0">
           <ShieldAlert className="w-6 h-6 md:w-8 md:h-8" />
@@ -250,7 +218,6 @@ export default function AdminApp() {
             <PlusCircle size={18}/> Injecter Position
           </button>
           
-          {/* BOUTON BOÎTE À IDÉES */}
           <button onClick={() => {setActiveTab('ideas'); setSelectedUser(null);}} className={`px-4 py-3 rounded-xl font-bold flex items-center justify-between gap-3 transition whitespace-nowrap shrink-0 ${activeTab === 'ideas' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
             <div className="flex items-center gap-2 md:gap-3">
               <Lightbulb size={18}/> Boîte à Idées
@@ -267,16 +234,13 @@ export default function AdminApp() {
       {/* MAIN CONTENT */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto relative h-full">
         
-        {/* TOAST NOTIFICATION */}
         {status && (
           <div className="absolute top-4 right-4 md:top-8 md:right-8 bg-emerald-500/20 text-emerald-400 px-6 py-3 rounded-xl font-bold border border-emerald-500/50 shadow-2xl z-50 animate-in slide-in-from-top-4">
             {status}
           </div>
         )}
 
-        {/* =========================================
-            ONGLET 1 : ACTIONS GLOBALES
-        ========================================= */}
+        {/* ONGLET 1 : ACTIONS GLOBALES */}
         {activeTab === 'global' && (
           <div className="animate-in fade-in pb-10">
             <h2 className="text-3xl font-black mb-8 text-white">Contrôle Global</h2>
@@ -328,8 +292,11 @@ export default function AdminApp() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white mb-4 h-20 outline-none focus:border-amber-500 resize-none"
                     placeholder="Message de la notification..."
                   />
-                  <button onClick={handleSendNotification} className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-black py-3 rounded-xl flex items-center justify-center gap-2 transition">
+                  <button onClick={handleSendNotification} className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-black py-3 rounded-xl flex items-center justify-center gap-2 transition mb-2">
                     <Send size={18} /> Déclencher
+                  </button>
+                  <button onClick={handleForceVibrateGlobal} className="w-full border border-amber-500/50 text-amber-500 font-black py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-amber-500/10 transition">
+                    Vibration Forcée
                   </button>
                 </div>
               </div>
@@ -338,9 +305,7 @@ export default function AdminApp() {
           </div>
         )}
 
-        {/* =========================================
-            ONGLET 2 : UTILISATEURS (LISTE)
-        ========================================= */}
+        {/* ONGLET 2 : UTILISATEURS (LISTE) */}
         {activeTab === 'users' && !selectedUser && (
           <div className="max-w-5xl mx-auto animate-in fade-in pb-10">
             <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-4 mb-8">
@@ -391,9 +356,7 @@ export default function AdminApp() {
           </div>
         )}
 
-        {/* =========================================
-            ONGLET 2 : UTILISATEURS (PROFIL CIBLE)
-        ========================================= */}
+        {/* ONGLET 2 : UTILISATEURS (PROFIL CIBLE) */}
         {activeTab === 'users' && selectedUser && (
           <div className="max-w-3xl mx-auto animate-in slide-in-from-right-8 pb-10">
             <button onClick={() => setSelectedUser(null)} className="text-slate-400 mb-6 flex items-center gap-2 hover:text-white font-bold bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 transition w-fit">
@@ -436,15 +399,18 @@ export default function AdminApp() {
             <div className="grid grid-cols-1 gap-6">
               
               <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
-                <h3 className="font-black text-white mb-4 flex items-center gap-2 text-lg"><Target className="text-rose-500"/> Message Privé (Popup)</h3>
-                <div className="flex flex-col md:flex-row gap-3">
+                <h3 className="font-black text-white mb-4 flex items-center gap-2 text-lg"><Target className="text-rose-500"/> Action Ciblée</h3>
+                <div className="flex flex-col md:flex-row gap-3 mb-4">
                   <input 
                     value={message} onChange={(e) => setMessage(e.target.value)} 
                     placeholder="Ce message apparaîtra uniquement sur son écran..." 
                     className="flex-1 bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none text-white focus:border-rose-500 transition" 
                   />
-                  <button onClick={() => {sendCommand({ type: 'POPUP_MESSAGE', text: message }, selectedUser.id); setMessage('');}} className="bg-rose-600 hover:bg-rose-500 transition text-white px-6 py-4 md:py-0 rounded-xl font-black">Envoyer</button>
+                  <button onClick={() => {sendCommand({ type: 'POPUP_MESSAGE', text: message }, selectedUser.id); setMessage('');}} className="bg-rose-600 hover:bg-rose-500 transition text-white px-6 py-4 md:py-0 rounded-xl font-black">Envoyer Popup</button>
                 </div>
+                <button onClick={() => sendCommand({ type: 'VIBRATE' }, selectedUser.id)} className="w-full bg-slate-800 border border-rose-500/50 hover:bg-rose-900/50 transition text-rose-500 px-6 py-3 rounded-xl font-black">
+                  Faire vibrer son téléphone
+                </button>
               </div>
 
               <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-xl">
@@ -493,9 +459,7 @@ export default function AdminApp() {
           </div>
         )}
 
-        {/* =========================================
-            ONGLET 3 : INJECTER UNE POSITION
-        ========================================= */}
+        {/* ONGLET 3 : INJECTER UNE POSITION */}
         {activeTab === 'positions' && (
           <div className="max-w-2xl mx-auto animate-in fade-in pb-10">
             <h2 className="text-3xl font-black text-white mb-2">Créateur de Position</h2>
@@ -569,9 +533,7 @@ export default function AdminApp() {
           </div>
         )}
 
-        {/* =========================================
-            NOUVEL ONGLET : BOÎTE À IDÉES
-        ========================================= */}
+        {/* ONGLET 4 : BOÎTE À IDÉES */}
         {activeTab === 'ideas' && (
           <div className="max-w-4xl mx-auto animate-in fade-in pb-10">
             <h2 className="text-3xl font-black text-white mb-2 flex items-center gap-3">
@@ -580,7 +542,6 @@ export default function AdminApp() {
             <p className="text-slate-400 text-sm mb-8">Gérez les suggestions envoyées par les joueurs depuis l'application.</p>
 
             <div className="space-y-8">
-              {/* SECTION EN ATTENTE */}
               <div>
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-amber-500"></span>
@@ -617,7 +578,6 @@ export default function AdminApp() {
                 )}
               </div>
 
-              {/* SECTION APPROUVÉES */}
               {ideas.filter(i => i.status === 'approved').length > 0 && (
                 <div>
                   <h3 className="text-lg font-bold text-slate-400 mb-4 flex items-center gap-2">
@@ -644,8 +604,6 @@ export default function AdminApp() {
         )}
 
       </main>
-
-      {/* Règle CSS rapide pour masquer la scrollbar horizontale tout en gardant le scroll tactile sur mobile */}
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
