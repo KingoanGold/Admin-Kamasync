@@ -22,7 +22,7 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
-const appId = 'kamasync-ultra-v4';
+const appId = 'kamasync-ultra-v5';
 
 // --- LISTE DES CATÉGORIES OFFICIELLES ---
 const CATEGORIES = [
